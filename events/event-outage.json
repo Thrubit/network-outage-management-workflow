@@ -1,0 +1,11 @@
+{
+  "outageId": "OTG-2026-04-001",
+  "affectedNodeId": "NODE-CORE-001",
+  "outageType": "FIBER_CUT",
+  "severity": "P1_CRITICAL",
+  "detectedBy": "AUTOMATED_MONITOR",
+  "region": "US-EAST",
+  "carrier": "AT&T",
+  "estimatedAffectedSubscribers": 850000,
+  "detectedAt": "2026-04-25T03:14:22Z"
+}

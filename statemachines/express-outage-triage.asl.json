@@ -1,0 +1,76 @@
+{
+  "Comment": "Express outage triage — rapid classification and impact assessment without field dispatch or restoration",
+  "StartAt": "SetTriageContext",
+  "States": {
+    "SetTriageContext": {
+      "Type": "Pass",
+      "Parameters": {
+        "outageId.$": "$.outageId",
+        "affectedNodeId.$": "$.affectedNodeId",
+        "outageType.$": "$.outageType",
+        "severity.$": "$.severity",
+        "detectedBy.$": "$.detectedBy",
+        "region.$": "$.region",
+        "carrier.$": "$.carrier",
+        "estimatedAffectedSubscribers.$": "$.estimatedAffectedSubscribers",
+        "detectedAt.$": "$.detectedAt",
+        "meta": { "workflow": "ExpressOutageTriage", "checkType": "TRIAGE_ONLY" }
+      },
+      "Next": "ValidateOutageReport"
+    },
+    "ValidateOutageReport": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": { "FunctionName": "${ValidateOutageReportFunctionArn}", "Payload.$": "$" },
+      "ResultPath": "$.validation",
+      "Next": "IsReportValid"
+    },
+    "IsReportValid": {
+      "Type": "Choice",
+      "Choices": [{ "Variable": "$.validation.Payload.isValid", "BooleanEquals": true, "Next": "DiagnoseRootCause" }],
+      "Default": "TriageFailed"
+    },
+    "DiagnoseRootCause": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": { "FunctionName": "${DiagnoseRootCauseFunctionArn}", "Payload.$": "$.validation.Payload" },
+      "ResultPath": "$.diagnosis",
+      "Next": "TriageHold"
+    },
+    "TriageHold": {
+      "Type": "Wait",
+      "Seconds": 2,
+      "Next": "AssessImpactRadius"
+    },
+    "AssessImpactRadius": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": { "FunctionName": "${AssessImpactRadiusFunctionArn}", "Payload.$": "$.diagnosis.Payload" },
+      "ResultPath": "$.impact",
+      "Next": "TriageOutcome"
+    },
+    "TriageOutcome": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.validation.Payload.severity",
+          "StringEquals": "P1_CRITICAL",
+          "Next": "CriticalOutage"
+        },
+        {
+          "Variable": "$.impact.Payload.slaBreachRisk",
+          "BooleanEquals": true,
+          "Next": "CriticalOutage"
+        }
+      ],
+      "Default": "StandardOutage"
+    },
+    "CriticalOutage": { "Type": "Succeed" },
+    "StandardOutage": { "Type": "Succeed" },
+    "TriageFailed": {
+      "Type": "Fail",
+      "Error": "OutageTriageFailed",
+      "Cause": "Outage report is invalid — full validation and diagnosis required"
+    }
+  }
+}

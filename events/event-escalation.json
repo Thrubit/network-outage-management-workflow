@@ -1,0 +1,12 @@
+{
+  "outageId": "OTG-2026-03-055",
+  "affectedNodeId": "NODE-CORE-002",
+  "outageType": "WEATHER_DAMAGE",
+  "severity": "P1_CRITICAL",
+  "detectedBy": "FIELD_REPORT",
+  "region": "US-EAST",
+  "carrier": "AT&T",
+  "estimatedAffectedSubscribers": 720000,
+  "detectedAt": "2026-04-24T18:00:00Z",
+  "escalationReason": "Outage exceeded 6-hour MTTR SLA — NOC escalating to senior field operations team"
+}

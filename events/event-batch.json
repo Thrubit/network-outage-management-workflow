@@ -1,0 +1,37 @@
+{
+  "outages": [
+    {
+      "outageId": "OTG-2026-04-010",
+      "affectedNodeId": "NODE-EDGE-050",
+      "outageType": "HARDWARE_FAILURE",
+      "severity": "P2_MAJOR",
+      "detectedBy": "NOC_ALERT",
+      "region": "US-WEST",
+      "carrier": "Verizon",
+      "estimatedAffectedSubscribers": 4200,
+      "detectedAt": "2026-04-25T05:30:00Z"
+    },
+    {
+      "outageId": "OTG-2026-04-011",
+      "affectedNodeId": "NODE-AGGS-010",
+      "outageType": "CONGESTION",
+      "severity": "P3_MINOR",
+      "detectedBy": "AUTOMATED_MONITOR",
+      "region": "US-CENTRAL",
+      "carrier": "T-Mobile",
+      "estimatedAffectedSubscribers": 95000,
+      "detectedAt": "2026-04-25T06:00:00Z"
+    },
+    {
+      "outageId": "OTG-2026-04-012",
+      "affectedNodeId": "NODE-EDGE-051",
+      "outageType": "POWER_OUTAGE",
+      "severity": "P2_MAJOR",
+      "detectedBy": "FIELD_REPORT",
+      "region": "EU-WEST",
+      "carrier": "Deutsche Telekom",
+      "estimatedAffectedSubscribers": 3800,
+      "detectedAt": "2026-04-25T07:45:00Z"
+    }
+  ]
+}

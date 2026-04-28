@@ -1,0 +1,99 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  network-outage-management-workflow
+  Telecommunications network outage detection, diagnosis, restoration, and post-incident reporting workflow
+
+Globals:
+  Function:
+    Timeout: 10
+    Runtime: nodejs18.x
+    CodeUri: lambdas/
+
+Resources:
+
+  ValidateOutageReportFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: validate-outage-report.handler
+
+  DiagnoseRootCauseFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: diagnose-root-cause.handler
+
+  AssessImpactRadiusFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: assess-impact-radius.handler
+
+  DispatchFieldTechFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: dispatch-field-tech.handler
+
+  ApplyNetworkRerouteFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: apply-network-reroute.handler
+
+  RestoreServiceFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: restore-service.handler
+
+  GenerateIncidentReportFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: generate-incident-report.handler
+
+  OutageManagementPipelineStateMachine:
+    Type: AWS::Serverless::StateMachine
+    Properties:
+      Description: End-to-end network outage management pipeline. Validates the outage report, diagnoses the root cause across affected network segments, assesses the impact radius and number of affected subscribers, dispatches field technicians, applies network rerouting to restore partial service, executes full service restoration, and generates the incident report for SLA tracking.
+      DefinitionUri: statemachines/outage-management-pipeline.asl.json
+      DefinitionSubstitutions:
+        ValidateOutageReportFunctionArn: !GetAtt ValidateOutageReportFunction.Arn
+        DiagnoseRootCauseFunctionArn: !GetAtt DiagnoseRootCauseFunction.Arn
+        AssessImpactRadiusFunctionArn: !GetAtt AssessImpactRadiusFunction.Arn
+        DispatchFieldTechFunctionArn: !GetAtt DispatchFieldTechFunction.Arn
+        ApplyNetworkRerouteFunctionArn: !GetAtt ApplyNetworkRerouteFunction.Arn
+        RestoreServiceFunctionArn: !GetAtt RestoreServiceFunction.Arn
+        GenerateIncidentReportFunctionArn: !GetAtt GenerateIncidentReportFunction.Arn
+      Type: STANDARD
+
+  BulkOutageProcessingStateMachine:
+    Type: AWS::Serverless::StateMachine
+    Properties:
+      Description: Processes a batch of active outage events concurrently using a Map state with a maximum concurrency of 3. Each outage is independently validated, root-cause diagnosed, and impact-assessed before field dispatch and rerouting are initiated.
+      DefinitionUri: statemachines/bulk-outage-processing.asl.json
+      DefinitionSubstitutions:
+        ValidateOutageReportFunctionArn: !GetAtt ValidateOutageReportFunction.Arn
+        DiagnoseRootCauseFunctionArn: !GetAtt DiagnoseRootCauseFunction.Arn
+        AssessImpactRadiusFunctionArn: !GetAtt AssessImpactRadiusFunction.Arn
+        GenerateIncidentReportFunctionArn: !GetAtt GenerateIncidentReportFunction.Arn
+      Type: STANDARD
+
+  OutageEscalationStateMachine:
+    Type: AWS::Serverless::StateMachine
+    Properties:
+      Description: Escalation workflow for unresolved or recurring network outages. Re-validates the outage report, enforces a Wait state for network stabilization, runs parallel root-cause re-diagnosis and impact re-assessment in a Parallel state, then re-dispatches field resources or escalates to network operations leadership with a structured SLA breach report.
+      DefinitionUri: statemachines/outage-escalation.asl.json
+      DefinitionSubstitutions:
+        ValidateOutageReportFunctionArn: !GetAtt ValidateOutageReportFunction.Arn
+        DiagnoseRootCauseFunctionArn: !GetAtt DiagnoseRootCauseFunction.Arn
+        AssessImpactRadiusFunctionArn: !GetAtt AssessImpactRadiusFunction.Arn
+        DispatchFieldTechFunctionArn: !GetAtt DispatchFieldTechFunction.Arn
+        RestoreServiceFunctionArn: !GetAtt RestoreServiceFunction.Arn
+      Type: STANDARD
+
+  ExpressOutageTriageStateMachine:
+    Type: AWS::Serverless::StateMachine
+    Properties:
+      Description: Express triage workflow for immediate outage severity classification. Validates the incoming outage report and immediately diagnoses the root cause to return a real-time severity and affected-subscriber count, enabling NOC teams to prioritize dispatch and rerouting actions without waiting for the full pipeline.
+      DefinitionUri: statemachines/express-outage-triage.asl.json
+      DefinitionSubstitutions:
+        ValidateOutageReportFunctionArn: !GetAtt ValidateOutageReportFunction.Arn
+        DiagnoseRootCauseFunctionArn: !GetAtt DiagnoseRootCauseFunction.Arn
+        AssessImpactRadiusFunctionArn: !GetAtt AssessImpactRadiusFunction.Arn
+      Type: EXPRESS

@@ -1,0 +1,65 @@
+{
+  "Comment": "Bulk outage processing — diagnose and assess multiple simultaneous outages using Map state",
+  "StartAt": "ProcessOutageBatch",
+  "States": {
+    "ProcessOutageBatch": {
+      "Type": "Map",
+      "ItemsPath": "$.outages",
+      "MaxConcurrency": 3,
+      "ItemProcessor": {
+        "ProcessorConfig": { "Mode": "INLINE" },
+        "StartAt": "ValidateReport",
+        "States": {
+          "ValidateReport": {
+            "Type": "Task",
+            "Resource": "arn:aws:states:::lambda:invoke",
+            "Parameters": { "FunctionName": "${ValidateOutageReportFunctionArn}", "Payload.$": "$" },
+            "ResultPath": "$.validation",
+            "Retry": [{ "ErrorEquals": ["Lambda.ServiceException", "Lambda.AWSLambdaException", "Lambda.SdkClientException", "Lambda.TooManyRequestsException"], "IntervalSeconds": 2, "MaxAttempts": 3, "BackoffRate": 2 }],
+            "Next": "InvestigateInParallel"
+          },
+          "InvestigateInParallel": {
+            "Type": "Parallel",
+            "Branches": [
+              {
+                "StartAt": "DiagnoseRootCause",
+                "States": {
+                  "DiagnoseRootCause": {
+                    "Type": "Task",
+                    "Resource": "arn:aws:states:::lambda:invoke",
+                    "Parameters": { "FunctionName": "${DiagnoseRootCauseFunctionArn}", "Payload.$": "$.validation.Payload" },
+                    "End": true
+                  }
+                }
+              },
+              {
+                "StartAt": "AssessImpact",
+                "States": {
+                  "AssessImpact": {
+                    "Type": "Task",
+                    "Resource": "arn:aws:states:::lambda:invoke",
+                    "Parameters": { "FunctionName": "${AssessImpactRadiusFunctionArn}", "Payload.$": "$.validation.Payload" },
+                    "End": true
+                  }
+                }
+              }
+            ],
+            "ResultPath": "$.investigation",
+            "Next": "GenerateReport"
+          },
+          "GenerateReport": {
+            "Type": "Task",
+            "Resource": "arn:aws:states:::lambda:invoke",
+            "Parameters": { "FunctionName": "${GenerateIncidentReportFunctionArn}", "Payload.$": "$.investigation[1].Payload" },
+            "ResultPath": "$.report",
+            "Retry": [{ "ErrorEquals": ["Lambda.ServiceException", "Lambda.AWSLambdaException", "Lambda.SdkClientException", "Lambda.TooManyRequestsException"], "IntervalSeconds": 2, "MaxAttempts": 3, "BackoffRate": 2 }],
+            "End": true
+          }
+        }
+      },
+      "ResultPath": "$.processedOutages",
+      "Next": "BulkOutageComplete"
+    },
+    "BulkOutageComplete": { "Type": "Succeed" }
+  }
+}

@@ -1,0 +1,94 @@
+{
+  "Comment": "Outage management pipeline — validate, diagnose, assess impact, reroute, dispatch field tech, restore, and report",
+  "StartAt": "ValidateOutageReport",
+  "States": {
+    "ValidateOutageReport": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": { "FunctionName": "${ValidateOutageReportFunctionArn}", "Payload.$": "$" },
+      "ResultPath": "$.validation",
+      "Retry": [{ "ErrorEquals": ["Lambda.ServiceException", "Lambda.AWSLambdaException", "Lambda.SdkClientException", "Lambda.TooManyRequestsException"], "IntervalSeconds": 2, "MaxAttempts": 3, "BackoffRate": 2 }],
+      "Catch": [{ "ErrorEquals": ["States.ALL"], "Next": "OutageFailed", "ResultPath": "$.error" }],
+      "Next": "IsReportValid"
+    },
+    "IsReportValid": {
+      "Type": "Choice",
+      "Choices": [{ "Variable": "$.validation.Payload.isValid", "BooleanEquals": true, "Next": "InvestigateOutage" }],
+      "Default": "OutageFailed"
+    },
+    "InvestigateOutage": {
+      "Type": "Parallel",
+      "Branches": [
+        {
+          "StartAt": "DiagnoseRootCause",
+          "States": {
+            "DiagnoseRootCause": {
+              "Type": "Task",
+              "Resource": "arn:aws:states:::lambda:invoke",
+              "Parameters": { "FunctionName": "${DiagnoseRootCauseFunctionArn}", "Payload.$": "$.validation.Payload" },
+              "Retry": [{ "ErrorEquals": ["Lambda.ServiceException", "Lambda.AWSLambdaException", "Lambda.SdkClientException", "Lambda.TooManyRequestsException"], "IntervalSeconds": 2, "MaxAttempts": 3, "BackoffRate": 2 }],
+              "End": true
+            }
+          }
+        },
+        {
+          "StartAt": "AssessImpactRadius",
+          "States": {
+            "AssessImpactRadius": {
+              "Type": "Task",
+              "Resource": "arn:aws:states:::lambda:invoke",
+              "Parameters": { "FunctionName": "${AssessImpactRadiusFunctionArn}", "Payload.$": "$.validation.Payload" },
+              "Retry": [{ "ErrorEquals": ["Lambda.ServiceException", "Lambda.AWSLambdaException", "Lambda.SdkClientException", "Lambda.TooManyRequestsException"], "IntervalSeconds": 2, "MaxAttempts": 3, "BackoffRate": 2 }],
+              "End": true
+            }
+          }
+        }
+      ],
+      "ResultPath": "$.investigation",
+      "Catch": [{ "ErrorEquals": ["States.ALL"], "Next": "OutageFailed", "ResultPath": "$.error" }],
+      "Next": "ApplyNetworkReroute"
+    },
+    "ApplyNetworkReroute": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": { "FunctionName": "${ApplyNetworkRerouteFunctionArn}", "Payload.$": "$.investigation[1].Payload" },
+      "ResultPath": "$.reroute",
+      "Retry": [{ "ErrorEquals": ["Lambda.ServiceException", "Lambda.AWSLambdaException", "Lambda.SdkClientException", "Lambda.TooManyRequestsException"], "IntervalSeconds": 2, "MaxAttempts": 3, "BackoffRate": 2 }],
+      "Catch": [{ "ErrorEquals": ["States.ALL"], "Next": "OutageFailed", "ResultPath": "$.error" }],
+      "Next": "DispatchFieldTech"
+    },
+    "DispatchFieldTech": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": { "FunctionName": "${DispatchFieldTechFunctionArn}", "Payload.$": "$.reroute.Payload" },
+      "ResultPath": "$.dispatch",
+      "Retry": [{ "ErrorEquals": ["Lambda.ServiceException", "Lambda.AWSLambdaException", "Lambda.SdkClientException", "Lambda.TooManyRequestsException"], "IntervalSeconds": 2, "MaxAttempts": 3, "BackoffRate": 2 }],
+      "Catch": [{ "ErrorEquals": ["States.ALL"], "Next": "OutageFailed", "ResultPath": "$.error" }],
+      "Next": "RestoreService"
+    },
+    "RestoreService": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": { "FunctionName": "${RestoreServiceFunctionArn}", "Payload.$": "$.dispatch.Payload" },
+      "ResultPath": "$.restore",
+      "Retry": [{ "ErrorEquals": ["Lambda.ServiceException", "Lambda.AWSLambdaException", "Lambda.SdkClientException", "Lambda.TooManyRequestsException"], "IntervalSeconds": 2, "MaxAttempts": 3, "BackoffRate": 2 }],
+      "Catch": [{ "ErrorEquals": ["States.ALL"], "Next": "OutageFailed", "ResultPath": "$.error" }],
+      "Next": "GenerateIncidentReport"
+    },
+    "GenerateIncidentReport": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": { "FunctionName": "${GenerateIncidentReportFunctionArn}", "Payload.$": "$.restore.Payload" },
+      "ResultPath": "$.report",
+      "Retry": [{ "ErrorEquals": ["Lambda.ServiceException", "Lambda.AWSLambdaException", "Lambda.SdkClientException", "Lambda.TooManyRequestsException"], "IntervalSeconds": 2, "MaxAttempts": 3, "BackoffRate": 2 }],
+      "Catch": [{ "ErrorEquals": ["States.ALL"], "Next": "OutageFailed", "ResultPath": "$.error" }],
+      "Next": "OutageResolved"
+    },
+    "OutageResolved": { "Type": "Succeed" },
+    "OutageFailed": {
+      "Type": "Fail",
+      "Error": "OutageManagementFailed",
+      "Cause": "Outage report could not be validated, diagnosed, or resolved through the management pipeline"
+    }
+  }
+}

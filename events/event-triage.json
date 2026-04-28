@@ -1,0 +1,11 @@
+{
+  "outageId": "OTG-TRIAGE-2026-099",
+  "affectedNodeId": "NODE-AGGS-011",
+  "outageType": "CONFIGURATION_ERROR",
+  "severity": "P2_MAJOR",
+  "detectedBy": "NOC_ALERT",
+  "region": "US-WEST",
+  "carrier": "Comcast",
+  "estimatedAffectedSubscribers": 72000,
+  "detectedAt": "2026-04-25T09:22:00Z"
+}

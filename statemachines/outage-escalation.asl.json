@@ -1,0 +1,98 @@
+{
+  "Comment": "Outage escalation — re-diagnose a prolonged outage and escalate to field dispatch and restoration",
+  "StartAt": "SetEscalationContext",
+  "States": {
+    "SetEscalationContext": {
+      "Type": "Pass",
+      "Parameters": {
+        "outageId.$": "$.outageId",
+        "affectedNodeId.$": "$.affectedNodeId",
+        "outageType.$": "$.outageType",
+        "severity.$": "$.severity",
+        "detectedBy.$": "$.detectedBy",
+        "region.$": "$.region",
+        "carrier.$": "$.carrier",
+        "estimatedAffectedSubscribers.$": "$.estimatedAffectedSubscribers",
+        "detectedAt.$": "$.detectedAt",
+        "escalationReason.$": "$.escalationReason",
+        "meta": { "workflow": "OutageEscalation", "trigger": "PROLONGED_OUTAGE_ESCALATION" }
+      },
+      "Next": "RevalidateOutage"
+    },
+    "RevalidateOutage": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": { "FunctionName": "${ValidateOutageReportFunctionArn}", "Payload.$": "$" },
+      "ResultPath": "$.revalidation",
+      "Retry": [{ "ErrorEquals": ["Lambda.ServiceException", "Lambda.AWSLambdaException", "Lambda.SdkClientException", "Lambda.TooManyRequestsException"], "IntervalSeconds": 2, "MaxAttempts": 3, "BackoffRate": 2 }],
+      "Next": "IsOutageStillActive"
+    },
+    "IsOutageStillActive": {
+      "Type": "Choice",
+      "Choices": [{ "Variable": "$.revalidation.Payload.isValid", "BooleanEquals": true, "Next": "EscalationHold" }],
+      "Default": "EscalationFailed"
+    },
+    "EscalationHold": {
+      "Type": "Wait",
+      "Seconds": 5,
+      "Next": "ReInvestigateInParallel"
+    },
+    "ReInvestigateInParallel": {
+      "Type": "Parallel",
+      "Branches": [
+        {
+          "StartAt": "ReDiagnoseRootCause",
+          "States": {
+            "ReDiagnoseRootCause": {
+              "Type": "Task",
+              "Resource": "arn:aws:states:::lambda:invoke",
+              "Parameters": { "FunctionName": "${DiagnoseRootCauseFunctionArn}", "Payload.$": "$.revalidation.Payload" },
+              "End": true
+            }
+          }
+        },
+        {
+          "StartAt": "ReAssessImpact",
+          "States": {
+            "ReAssessImpact": {
+              "Type": "Task",
+              "Resource": "arn:aws:states:::lambda:invoke",
+              "Parameters": { "FunctionName": "${AssessImpactRadiusFunctionArn}", "Payload.$": "$.revalidation.Payload" },
+              "End": true
+            }
+          }
+        }
+      ],
+      "ResultPath": "$.escalatedInvestigation",
+      "Next": "EscalatedFieldDispatch"
+    },
+    "EscalatedFieldDispatch": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": { "FunctionName": "${DispatchFieldTechFunctionArn}", "Payload.$": "$.escalatedInvestigation[1].Payload" },
+      "ResultPath": "$.dispatch",
+      "Next": "EscalatedRestoreService"
+    },
+    "EscalatedRestoreService": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": { "FunctionName": "${RestoreServiceFunctionArn}", "Payload.$": "$.dispatch.Payload" },
+      "ResultPath": "$.restore",
+      "Next": "IsServiceRestored"
+    },
+    "IsServiceRestored": {
+      "Type": "Choice",
+      "Choices": [
+        { "Variable": "$.restore.Payload.serviceStatus", "StringEquals": "FULLY_RESTORED", "Next": "EscalationResolved" },
+        { "Variable": "$.restore.Payload.serviceStatus", "StringEquals": "PARTIALLY_RESTORED", "Next": "EscalationResolved" }
+      ],
+      "Default": "EscalationFailed"
+    },
+    "EscalationResolved": { "Type": "Succeed" },
+    "EscalationFailed": {
+      "Type": "Fail",
+      "Error": "OutageEscalationFailed",
+      "Cause": "Escalated outage could not be resolved — manual NOC intervention required"
+    }
+  }
+}
